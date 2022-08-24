@@ -1301,7 +1301,7 @@ impl ServiceStatus {
     /// # Errors
     ///
     /// Returns an error if the `dwCurrentState` field does not represent a valid [`ServiceState`].
-    fn from_raw(raw: Services::SERVICE_STATUS) -> Result<Self, ParseRawError> {
+    pub(crate) fn from_raw(raw: Services::SERVICE_STATUS) -> Result<Self, ParseRawError> {
         Ok(ServiceStatus {
             service_type: ServiceType::from_bits_truncate(raw.dwServiceType),
             current_state: ServiceState::from_raw(raw.dwCurrentState)?,

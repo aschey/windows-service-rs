@@ -1,11 +1,11 @@
 use std::ffi::OsStr;
 use std::{io, ptr};
 
-use widestring::WideCString;
-use windows_sys::Win32::System::Services;
+use widestring::{U16CString, WideCString};
+use windows_sys::Win32::System::Services::{self, ENUM_SERVICE_STATUSW};
 
 use crate::sc_handle::ScHandle;
-use crate::service::{to_wide, RawServiceInfo, Service, ServiceAccess, ServiceInfo};
+use crate::service::{to_wide, RawServiceInfo, Service, ServiceAccess, ServiceInfo, ServiceStatus};
 use crate::{Error, Result};
 
 bitflags::bitflags! {
@@ -19,6 +19,45 @@ bitflags::bitflags! {
 
         /// Can enumerate services or receive notifications.
         const ENUMERATE_SERVICE = Services::SC_MANAGER_ENUMERATE_SERVICE;
+    }
+}
+
+bitflags::bitflags! {
+    pub struct ListServiceType: u32 {
+        const DRIVER = Services::SERVICE_DRIVER;
+        const FILE_SYSTEM_DRIVER = Services::SERVICE_FILE_SYSTEM_DRIVER;
+        const KERNEL_DRIVER = Services::SERVICE_KERNEL_DRIVER;
+        const WIN32 = Services::SERVICE_WIN32;
+        const WIN32_OWN_PROCESS = Services::SERVICE_WIN32_OWN_PROCESS;
+        const SHARE_PROCESS = Services::SERVICE_WIN32_SHARE_PROCESS;
+    }
+}
+
+bitflags::bitflags! {
+    pub struct ServiceActiveState: u32 {
+        const ACTIVE = Services::SERVICE_ACTIVE;
+        const INACTIVE = Services::SERVICE_INACTIVE;
+        const ALL = Services::SERVICE_STATE_ALL;
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ServiceEntry {
+    pub name: String,
+    pub display_name: String,
+    pub status: ServiceStatus,
+}
+
+impl ServiceEntry {
+    fn from_raw(raw: ENUM_SERVICE_STATUSW) -> Result<Self> {
+        unsafe {
+            Ok(Self {
+                name: U16CString::from_ptr_str(raw.lpServiceName).to_string_lossy(),
+                display_name: U16CString::from_ptr_str(raw.lpDisplayName).to_string_lossy(),
+                status: ServiceStatus::from_raw(raw.ServiceStatus)
+                    .map_err(Error::InvalidServiceState)?,
+            })
+        }
     }
 }
 
@@ -207,5 +246,39 @@ impl ServiceManager {
         } else {
             Ok(Service::new(unsafe { ScHandle::new(service_handle) }))
         }
+    }
+
+    pub fn get_all_services(
+        &self,
+        list_service_type: ListServiceType,
+        service_active_state: ServiceActiveState,
+    ) -> Result<Vec<ServiceEntry>> {
+        const MAX_SERVICES: usize = 4096;
+        let mut all_services = Vec::<ENUM_SERVICE_STATUSW>::with_capacity(MAX_SERVICES);
+        let mut bytes_needed = 0u32;
+        let mut num_services = 0u32;
+        let mut resume_handle = 0u32;
+        unsafe {
+            let result = Services::EnumServicesStatusW(
+                self.manager_handle.raw_handle(),
+                list_service_type.bits(),
+                service_active_state.bits(),
+                all_services.as_mut_ptr(),
+                (std::mem::size_of::<ENUM_SERVICE_STATUSW>() * MAX_SERVICES) as u32,
+                &mut bytes_needed,
+                &mut num_services,
+                &mut resume_handle,
+            );
+
+            if result == 0 {
+                return Err(Error::Winapi(io::Error::last_os_error()));
+            }
+            all_services.set_len(num_services as usize);
+        };
+
+        all_services
+            .into_iter()
+            .map(ServiceEntry::from_raw)
+            .collect()
     }
 }
