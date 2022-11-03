@@ -225,6 +225,10 @@ pub enum Error {
     #[error(display = "Start argument contains a nul byte")]
     StartArgumentHasNulByte,
 
+    /// Trustee contains a nul byte.
+    #[error(display = "Trustee contains a nul byte")]
+    TrusteeHasNulByte,
+
     /// Invalid raw representation of [`ServiceState`](service::ServiceState).
     #[error(display = "Invalid service state value")]
     InvalidServiceState(#[error(source)] service::ParseRawError),
