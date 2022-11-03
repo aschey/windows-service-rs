@@ -140,6 +140,9 @@ impl ServiceManager {
         service_info: &ServiceInfo,
         service_access: ServiceAccess,
     ) -> Result<Service> {
+        let service_name = WideCString::from_os_str(service_info.name.clone())
+            .map_err(|_| Error::ArgumentHasNulByte("service_name"))?;
+
         let raw_info = RawServiceInfo::new(service_info)?;
         let service_handle = unsafe {
             Services::CreateServiceW(
@@ -171,7 +174,10 @@ impl ServiceManager {
         if service_handle.is_null() {
             Err(Error::Winapi(io::Error::last_os_error()))
         } else {
-            Ok(Service::new(unsafe { ScHandle::new(service_handle) }))
+            Ok(Service::new(
+                unsafe { ScHandle::new(service_handle) },
+                service_name,
+            ))
         }
     }
 
@@ -212,7 +218,10 @@ impl ServiceManager {
         if service_handle.is_null() {
             Err(Error::Winapi(io::Error::last_os_error()))
         } else {
-            Ok(Service::new(unsafe { ScHandle::new(service_handle) }))
+            Ok(Service::new(
+                unsafe { ScHandle::new(service_handle) },
+                service_name,
+            ))
         }
     }
 

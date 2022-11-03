@@ -8,6 +8,9 @@ use std::time::Duration;
 use std::{io, mem};
 
 use widestring::{error::ContainsNul, WideCStr, WideCString, WideString};
+use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+use windows_sys::Win32::Security;
+use windows_sys::Win32::Security::Authorization;
 use windows_sys::{
     core::GUID,
     Win32::{
@@ -1438,6 +1441,11 @@ pub enum ServiceSidType {
     Unrestricted = 1,
 }
 
+pub enum Trustee {
+    CurrentUser,
+    Name(String),
+}
+
 /// A struct that represents a system service.
 ///
 /// The instances of the [`Service`] can be obtained via [`ServiceManager`].
@@ -1445,11 +1453,15 @@ pub enum ServiceSidType {
 /// [`ServiceManager`]: super::service_manager::ServiceManager
 pub struct Service {
     service_handle: ScHandle,
+    name: WideCString,
 }
 
 impl Service {
-    pub(crate) fn new(service_handle: ScHandle) -> Self {
-        Service { service_handle }
+    pub(crate) fn new(service_handle: ScHandle, name: WideCString) -> Self {
+        Service {
+            service_handle,
+            name,
+        }
     }
 
     /// Provides access to the underlying system service handle
@@ -1593,6 +1605,76 @@ impl Service {
                 let raw_config = data.as_ptr() as *const Services::QUERY_SERVICE_CONFIGW;
                 ServiceConfig::from_raw(*raw_config)
             }
+        }
+    }
+
+    pub fn grant_user_access(
+        &self,
+        trustee: Trustee,
+        permissions: ServiceAccess,
+    ) -> crate::Result<()> {
+        unsafe {
+            let mut old_dacl = ptr::null_mut();
+            let err = Authorization::GetNamedSecurityInfoW(
+                self.name.as_ptr(),
+                Authorization::SE_SERVICE,
+                Security::DACL_SECURITY_INFORMATION,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                &mut old_dacl,
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+            if err != ERROR_SUCCESS {
+                return Err(Error::Winapi(io::Error::last_os_error()));
+            }
+
+            let mut explicit_access = Authorization::EXPLICIT_ACCESS_W {
+                grfAccessPermissions: 0,
+                grfAccessMode: 0,
+                grfInheritance: 0,
+                Trustee: Authorization::TRUSTEE_W {
+                    pMultipleTrustee: ptr::null_mut(),
+                    MultipleTrusteeOperation: 0,
+                    TrusteeForm: 0,
+                    TrusteeType: 0,
+                    ptstrName: ptr::null_mut(),
+                },
+            };
+            let user = WideCString::from_os_str(match trustee {
+                Trustee::CurrentUser => "CURRENT_USER".to_owned(),
+                Trustee::Name(name) => name,
+            })
+            .map_err(|_| Error::ArgumentHasNulByte("trustee"))?;
+
+            Authorization::BuildExplicitAccessWithNameW(
+                &mut explicit_access,
+                user.as_ptr(),
+                permissions.bits(),
+                Authorization::GRANT_ACCESS,
+                Security::CONTAINER_INHERIT_ACE,
+            );
+
+            let mut new_dacl = ptr::null_mut();
+            let err = Authorization::SetEntriesInAclW(1, &explicit_access, old_dacl, &mut new_dacl);
+            if err != ERROR_SUCCESS {
+                return Err(Error::Winapi(io::Error::last_os_error()));
+            }
+
+            let err = Authorization::SetNamedSecurityInfoW(
+                self.name.as_ptr(),
+                Authorization::SE_SERVICE,
+                Security::DACL_SECURITY_INFORMATION,
+                ptr::null_mut() as *mut c_void,
+                ptr::null_mut() as *mut c_void,
+                new_dacl,
+                ptr::null(),
+            );
+            if err != ERROR_SUCCESS {
+                return Err(Error::Winapi(io::Error::last_os_error()));
+            }
+
+            Ok(())
         }
     }
 
