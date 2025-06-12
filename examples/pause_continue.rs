@@ -1,12 +1,12 @@
-/// This is an example program that demonstrates how to pause and resume a given service.
-///
-/// Run in command prompt as admin:
-///
-/// `pause_continue.exe SERVICE_NAME`
-///
-/// Replace the `SERVICE_NAME` placeholder above with the name of the service that the program
-/// should manipulate. By default the program manipulates a WMI system service (Winmgmt) when the
-/// first argument is omitted.
+//! This is an example program that demonstrates how to pause and resume a given service.
+//!
+//! Run in command prompt as admin:
+//!
+//! `pause_continue.exe SERVICE_NAME`
+//!
+//! Replace the `SERVICE_NAME` placeholder above with the name of the service that the program
+//! should manipulate. By default the program manipulates a WMI system service (Winmgmt) when the
+//! first argument is omitted.
 
 #[cfg(windows)]
 fn main() -> windows_service::Result<()> {
