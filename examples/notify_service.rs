@@ -1,11 +1,11 @@
-/// This is an example program that demonstrates how to send a user-defined control code to a given service.
-///
-/// Run in command prompt as admin:
-///
-/// `notify_service.exe SERVICE_NAME`
-///
-/// Replace the `SERVICE_NAME` placeholder above with the name of the service that the program
-/// should notify.
+//! This is an example program that demonstrates how to send a user-defined control code to a given service.
+//!
+//! Run in command prompt as admin:
+//!
+//! `notify_service.exe SERVICE_NAME`
+//!
+//! Replace the `SERVICE_NAME` placeholder above with the name of the service that the program
+//! should notify.
 
 #[cfg(windows)]
 fn main() -> windows_service::Result<()> {
